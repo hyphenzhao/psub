@@ -4,6 +4,9 @@ import string
 import sys
 import time
 import sys
+import re
+import json
+import urllib
 from random import SystemRandom, shuffle
 from subprocess import CalledProcessError, Popen
 from threading import Thread
@@ -345,7 +348,39 @@ class pSub(object):
                 if not playing:
                     return
                 playing = self.play_stream(dict(song))
-
+    def load_lyrics(self, song_name):
+        # Load lyrics
+        song_possible_names = []
+        song_possible_names.append(song_name)
+        song_possible_names = song_possible_names + re.split(r'[-,.()|/]+', song_name)
+        netease_url = "http://music.163.com/api/search/pc"
+        for i in song_possible_names:
+            possible_name = i.strip()
+            if possible_name:
+                print("Searching name as <" + possible_name + "> ...")
+                params = {'s':possible_name, 'offset':0, 'limit':5, 'type':1}
+                result = requests.post(url=netease_url, params=params)
+                if result.json()['result']['songCount'] != 0:
+                    return result.json()['result']
+        return False
+        # lyrics_url = "http://geci.me/api/lyric/"
+        # lyrics_json = requests.get(lyrics_url + song_name).json()
+        # if lyrics_json['count'] == 0:
+            
+        #     for i in song_possible_names:
+        #         possible_name = i.strip()
+        #         if possible_name:
+        #             print("Searching name as <" + possible_name + "> ...")
+        #             lyrics_json = requests.get(lyrics_url + possible_name).json()
+        #             if lyrics_json['count'] != 0:
+        #                 break
+        # if lyrics_json['count'] != 0:
+        #     lyric_url = lyrics_json['result'][0]['lrc']
+        #     lyric = urllib.request.urlopen(lyric_url)
+        #     for i in lyric:
+        #         print(i.decode('utf-8'))
+        # else:
+        #     print("No lyric was found!")
     def play_stream(self, track_data):
         """
         Given track data, generate the stream url and pass it to ffplay to handle.
@@ -427,6 +462,21 @@ class pSub(object):
             has_finished = None
             open(os.path.join(click.get_app_dir('pSub'), 'play.lock'), 'w+').close()
 
+            
+            if sys.version_info[0] < 3:
+                song_name = track_data.get('title', '').encode("utf-8")
+            else:
+                song_name = track_data.get('title', '')
+            song_info = self.load_lyrics(song_name)
+            if song_info:
+                song_id = song_info['songs'][0]['id']
+                lyric_url = "http://music.163.com/api/song/media?id=" + str(song_id)
+                lyric = requests.get(lyric_url)
+                print("Found songs amount: " + str(song_info['songCount']))
+                print(lyric.json()['lyric'])
+            else:
+                print("No lyrics.")
+            lyrics_no = 0
             while has_finished is None:
                 has_finished = ffplay.poll()
                 if self.input_queue.empty():
@@ -456,6 +506,18 @@ class pSub(object):
                     os.remove(os.path.join(click.get_app_dir('pSub'), 'play.lock'))
                     ffplay.terminate()
                     return True
+                if 'l' in command.lower():
+                    lyrics_no += 1
+                    if song_info:
+                        lyrics_amount = 5
+                        lyrics_no = lyrics_no % lyrics_amount
+                        song_id = song_info['songs'][lyrics_no]['id']
+                        lyric_url = "http://music.163.com/api/song/media?id=" + str(song_id)
+                        lyric = requests.get(lyric_url)
+                        print(lyric.json()['lyric'])
+                    else:
+                        print("No lyrics.")
+                    
 
             os.remove(os.path.join(click.get_app_dir('pSub'), 'play.lock'))
             return True
