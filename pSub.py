@@ -358,38 +358,66 @@ class pSub(object):
 
         if not song_id:
             return False
-
-        click.secho(
-            '{} by {}'.format(
-                track_data.get('title', '').encode('utf-8'),
-                track_data.get('artist', '').encode('utf-8')
-            ),
-            fg='green'
-        )
+        if sys.version_info[0] < 3:
+            click.secho(
+                '{} by {}'.format(
+                    track_data.get('title', '').encode('utf-8'),
+                    track_data.get('artist', '').encode('utf-8')
+                ),
+                fg='green'
+            )
+        else:
+            click.secho(
+                '{} by {}'.format(
+                    track_data.get('title', ''),
+                    track_data.get('artist', '')
+                ),
+                fg='green'
+            )
 
         self.scrobble(song_id)
-
-        params = [
-            'ffplay',
-            '-i',
-            '{}&id={}&format={}'.format(stream_url, song_id, self.format),
-            '-showmode',
-            '{}'.format(self.show_mode),
-            '-window_title',
-            '{} by {}'.format(
-                track_data.get('title', '').encode('utf-8'),
-                track_data.get('artist', '').encode('utf-8')
-            ),
-            '-autoexit',
-            '-hide_banner',
-            '-x',
-            '500',
-            '-y',
-            '500',
-            '-loglevel',
-            'fatal',
-        ]
-
+        if sys.version_info[0] < 3:
+            params = [
+                'ffplay',
+                '-i',
+                '{}&id={}&format={}'.format(stream_url, song_id, self.format),
+                '-showmode',
+                '{}'.format(self.show_mode),
+                '-window_title',
+                '{} by {}'.format(
+                    track_data.get('title', '').encode('utf-8'),
+                    track_data.get('artist', '').encode('utf-8')
+                ),
+                '-autoexit',
+                '-hide_banner',
+                '-x',
+                '500',
+                '-y',
+                '500',
+                '-loglevel',
+                'fatal',
+            ]
+        else:
+            params = [
+                'ffplay',
+                '-i',
+                '{}&id={}&format={}'.format(stream_url, song_id, self.format),
+                '-showmode',
+                '{}'.format(self.show_mode),
+                '-window_title',
+                '{} by {}'.format(
+                    track_data.get('title', ''),
+                    track_data.get('artist', '')
+                ),
+                '-autoexit',
+                '-hide_banner',
+                '-x',
+                '500',
+                '-y',
+                '500',
+                '-loglevel',
+                'fatal',
+            ]
         if not self.display:
             params += ['-nodisp']
 
