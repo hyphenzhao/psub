@@ -361,8 +361,8 @@ class pSub(object):
 
         click.secho(
             '{} by {}'.format(
-                track_data.get('title', ''),
-                track_data.get('artist', '')
+                track_data.get('title', '').encode('utf-8'),
+                track_data.get('artist', '').encode('utf-8')
             ),
             fg='green'
         )
@@ -377,8 +377,8 @@ class pSub(object):
             '{}'.format(self.show_mode),
             '-window_title',
             '{} by {}'.format(
-                track_data.get('title', ''),
-                track_data.get('artist', '')
+                track_data.get('title', '').encode('utf-8'),
+                track_data.get('artist', '').encode('utf-8')
             ),
             '-autoexit',
             '-hide_banner',
@@ -406,7 +406,10 @@ class pSub(object):
                     continue
 
                 command = self.input_queue.get_nowait()
-                self.input_queue.queue.clear()
+                if sys.version_info[0] < 3:
+                	del self.input_queue.queue[:]
+                else:
+                	self.input_queue.queue.clear()
 
                 if 'x' in command.lower():
                     click.secho('Exiting!', fg='blue')
