@@ -7,7 +7,7 @@ import sys
 import re
 import json
 import urllib
-from random import SystemRandom, shuffle
+from random import SystemRandom, shuffle, choices
 from subprocess import CalledProcessError, Popen
 from threading import Thread
 
@@ -230,6 +230,16 @@ class pSub(object):
             songs.append(song)
 
         return songs
+    def get_videos(self):
+        """
+        Get a list of all videos
+        :return: list
+        """
+        videos = self.make_request(url=self.create_url('getVideos'))
+
+        if videos:
+            return videos['subsonic-response']['videos']['video']
+        return []
 
     def play_random_songs(self, music_folder):
         """
@@ -323,6 +333,18 @@ class pSub(object):
                     return
                 playing = self.play_stream(dict(song))
 
+    def play_video(self, videos_list, video_id):
+        target_video = None
+        for video in videos_list:
+            if int(video.get('id')) == int(video_id):
+                target_video = video
+        if target_video:
+            print(target_video)
+        else:
+            print("Cannot find video with id " + str(video_id))
+        self.play_stream(target_video, is_video=True)
+
+
     def play_playlist(self, playlist_id, randomise):
         """
         Get the tracks from the supplied playlist id and play them
@@ -344,45 +366,63 @@ class pSub(object):
         playing = True
 
         while playing:
-            for song in songs:
+            i = 0
+            while i < len(songs): 
+                song = songs[i]
                 if not playing:
                     return
                 playing = self.play_stream(dict(song))
-    def load_lyrics(self, song_name):
-        # Load lyrics
+                if playing == 'previous':
+                    if i != 0:
+                        i -= 1
+                    else:
+                        i = len(songs) - 1
+                    playing = True
+                    continue
+                i += 1
+
+    def randomString(self, stringLength=10):
+        """Generate a random string of fixed length """
+        return ''.join(choices(string.ascii_lowercase + string.digits, k=stringLength))
+
+    def get_songs_id_list(self, song_name):
+        # Load songs id list
         song_possible_names = []
         song_possible_names.append(song_name)
         song_possible_names = song_possible_names + re.split(r'[-,.()|/]+', song_name)
         netease_url = "http://music.163.com/api/search/pc"
+        limit = 5
         for i in song_possible_names:
             possible_name = i.strip()
             if possible_name:
                 print("Searching name as <" + possible_name + "> ...")
-                params = {'s':possible_name, 'offset':0, 'limit':5, 'type':1}
+                params = {'s':possible_name, 'offset':0, 'limit':limit, 'type':1}
                 result = requests.post(url=netease_url, params=params)
                 if 'result' in result.json() and 'songCount' in result.json()['result']:
                     if result.json()['result']['songCount'] != 0:
-                        return result.json()['result']
-        return False
-        # lyrics_url = "http://geci.me/api/lyric/"
-        # lyrics_json = requests.get(lyrics_url + song_name).json()
-        # if lyrics_json['count'] == 0:
-            
-        #     for i in song_possible_names:
-        #         possible_name = i.strip()
-        #         if possible_name:
-        #             print("Searching name as <" + possible_name + "> ...")
-        #             lyrics_json = requests.get(lyrics_url + possible_name).json()
-        #             if lyrics_json['count'] != 0:
-        #                 break
-        # if lyrics_json['count'] != 0:
-        #     lyric_url = lyrics_json['result'][0]['lrc']
-        #     lyric = urllib.request.urlopen(lyric_url)
-        #     for i in lyric:
-        #         print(i.decode('utf-8'))
-        # else:
-        #     print("No lyric was found!")
-    def play_stream(self, track_data):
+                        song_info = result.json()['result']
+                        amount = min(song_info['songCount'], limit)
+                        if amount == 0:
+                            return []
+                        songs_id_list = []
+                        for j in range(amount):
+                            songs_id_list.append(song_info['songs'][j]['id'])
+                        return songs_id_list
+                        
+        return []
+
+    def load_lyric_for(self, song_id):
+        lyric_url = "http://music.163.com/api/song/media?id=" + str(song_id)
+        print("Lyric Url:" + lyric_url)
+        lyric = requests.get(lyric_url)
+        if 'lyric' in lyric.json():
+            return lyric.json()['lyric']
+        elif 'msg' in lyric.json() and lyric.json()['msg'] == 'Cheating':
+            return 'IP blocked...'
+        else:
+            return 'Pure musics, please enjoy.'
+
+    def play_stream(self, track_data, is_video=False):
         """
         Given track data, generate the stream url and pass it to ffplay to handle.
         While stream is playing allow user input to control playback
@@ -394,66 +434,49 @@ class pSub(object):
 
         if not song_id:
             return False
+        track_data_title = track_data.get('title', '')
+        track_data_artist = track_data.get('artist', '')
         if sys.version_info[0] < 3:
-            click.secho(
-                '{} by {}'.format(
-                    track_data.get('title', '').encode('utf-8'),
-                    track_data.get('artist', '').encode('utf-8')
-                ),
-                fg='green'
+            track_data_title = track_data_title.encode('utf-8')
+            track_data_artist = track_data_artist.encode('utf-8')
+        if is_video:
+            present_title = '{}'.format(
+                track_data_title
             )
         else:
-            click.secho(
-                '{} by {}'.format(
-                    track_data.get('title', ''),
-                    track_data.get('artist', '')
-                ),
-                fg='green'
+            present_title = '{} by {}'.format(
+                track_data_title,
+                track_data_artist
             )
+        click.secho(
+            present_title,
+            fg='green'
+        )
 
         self.scrobble(song_id)
-        if sys.version_info[0] < 3:
-            params = [
-                'ffplay',
-                '-i',
-                '{}&id={}&format={}'.format(stream_url, song_id, self.format),
-                '-showmode',
-                '{}'.format(self.show_mode),
-                '-window_title',
-                '{} by {}'.format(
-                    track_data.get('title', '').encode('utf-8'),
-                    track_data.get('artist', '').encode('utf-8')
-                ),
-                '-autoexit',
-                '-hide_banner',
-                '-x',
-                '500',
-                '-y',
-                '500',
-                '-loglevel',
-                'fatal',
-            ]
+        if is_video:
+            x = "1080"
+            y = "720"
         else:
-            params = [
-                'ffplay',
-                '-i',
-                '{}&id={}&format={}'.format(stream_url, song_id, self.format),
-                '-showmode',
-                '{}'.format(self.show_mode),
-                '-window_title',
-                '{} by {}'.format(
-                    track_data.get('title', ''),
-                    track_data.get('artist', '')
-                ),
-                '-autoexit',
-                '-hide_banner',
-                '-x',
-                '500',
-                '-y',
-                '500',
-                '-loglevel',
-                'fatal',
-            ]
+            x = "500"
+            y = "500"
+        params = [
+            'ffplay',
+            '-i',
+            '{}&id={}&format={}'.format(stream_url, song_id, self.format),
+            '-showmode',
+            '{}'.format(self.show_mode),
+            '-window_title',
+            present_title,
+            '-autoexit',
+            '-hide_banner',
+            '-x',
+            x,
+            '-y',
+            y,
+            '-loglevel',
+            'fatal',
+        ]
         if not self.display:
             params += ['-nodisp']
 
@@ -463,25 +486,18 @@ class pSub(object):
             has_finished = None
             open(os.path.join(click.get_app_dir('pSub'), 'play.lock'), 'w+').close()
 
-            
-            if sys.version_info[0] < 3:
-                song_name = track_data.get('title', '').encode("utf-8")
-            else:
-                song_name = track_data.get('title', '')
-            song_info = self.load_lyrics(song_name)
-            if song_info:
-                song_id = song_info['songs'][0]['id']
-                lyric_url = "http://music.163.com/api/song/media?id=" + str(song_id)
-                lyric = requests.get(lyric_url)
-                print("Found songs amount: " + str(song_info['songCount']))
-                if 'lyric' in lyric.json():
-                    print(lyric.json()['lyric'])
+            if not is_video:
+                # Load song lyrics
+                songs_id_list = self.get_songs_id_list(track_data_title)
+                lyrics_no = 0
+                if songs_id_list:
+                    print("Lyrics available amount: " + str(len(songs_id_list)))
+                    lyrics = self.load_lyric_for(songs_id_list[lyrics_no])
+                    print(lyrics)
                 else:
-                    print('No lyrics, will show original json.')
-                    print(lyric.json())
-            else:
-                print("No lyrics.")
-            lyrics_no = 0
+                    print("Network error. Please check your internet connection.")
+
+
             while has_finished is None:
                 has_finished = ffplay.poll()
                 if self.input_queue.empty():
@@ -511,21 +527,20 @@ class pSub(object):
                     os.remove(os.path.join(click.get_app_dir('pSub'), 'play.lock'))
                     ffplay.terminate()
                     return True
-                    
-                # if 'p' in command.lower():
-                #     input("Press Enter to continue...")
+
+                if 'v' in command.lower():
+                    click.secho('Getting back...', fg='blue')
+                    os.remove(os.path.join(click.get_app_dir('pSub'), 'play.lock'))
+                    ffplay.terminate()
+                    return "previous"
 
                 if 'l' in command.lower():
-                    lyrics_no += 1
-                    if song_info:
-                        lyrics_amount = 5
-                        lyrics_no = lyrics_no % lyrics_amount
-                        song_id = song_info['songs'][lyrics_no]['id']
-                        lyric_url = "http://music.163.com/api/song/media?id=" + str(song_id)
-                        lyric = requests.get(lyric_url)
-                        print(lyric.json()['lyric'])
+                    if not is_video:
+                        lyrics_no += 1
+                        lyrics_no = lyrics_no % len(songs_id_list)
+                        print(self.load_lyric_for(songs_id_list[lyrics_no]))
                     else:
-                        print("No lyrics.")
+                        print("This is a video, cannot load lyrics")
                     
 
             os.remove(os.path.join(click.get_app_dir('pSub'), 'play.lock'))
@@ -567,7 +582,7 @@ class pSub(object):
         click.echo('')
         click.secho('   {}   '.format(message), bg='blue', fg='black')
         click.echo('')
-        click.secho('n = Next\nb = Beginning\nx = Exit', bg='yellow', fg='black')
+        click.secho('n = Next\nb = Beginning\nx = Exit\nl = Next Lyric\nv = Previous Song', bg='yellow', fg='black')
         click.echo('')
 
     @staticmethod
@@ -624,7 +639,7 @@ streaming:
     # It allows for more controls (volume mainly) but will grab the focus of your
     # keyboard when tracks change which can be annoying if you are typing
 
-    display: false
+    display: true
 
     # When the player window is shown, choose the default show mode
     # Options are:
@@ -901,3 +916,35 @@ def playlist(psub, randomise):
     )
 
     psub.play_playlist(playlist_id, randomise)
+
+@cli.command(help='Play a chosen video')
+@pass_pSub
+def video(psub):
+    video_id = None
+
+    while not video_id:
+        videos = psub.get_videos()
+        click.secho('Videos', bg='red', fg='black')
+        click.secho(
+            '\n'.join(
+                '{}\t{}\t tracks'.format(
+                    str(video.get('id')).ljust(7),
+                    str(video.get('title')).ljust(30)
+                ) for video in videos
+            ),
+            fg='yellow'
+        )
+        video_id = click.prompt(
+            'Enter an id to start',
+            type=int,
+        )
+
+    psub.play_video(videos, video_id)
+    # psub.show_banner(
+    #     'Playing {} tracks from the "{}" playlist'.format(
+    #         'randomised' if randomise else '',
+    #         ''.join(
+    #             videos.get('name') for playlist in playlists if int(playlist.get('id')) == int(playlist_id)
+    #         )
+    #     )
+    # )
