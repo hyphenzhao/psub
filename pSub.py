@@ -360,8 +360,9 @@ class pSub(object):
                 print("Searching name as <" + possible_name + "> ...")
                 params = {'s':possible_name, 'offset':0, 'limit':5, 'type':1}
                 result = requests.post(url=netease_url, params=params)
-                if result.json()['result']['songCount'] != 0:
-                    return result.json()['result']
+                if 'result' in result.json() and 'songCount' in result.json()['result']:
+                    if result.json()['result']['songCount'] != 0:
+                        return result.json()['result']
         return False
         # lyrics_url = "http://geci.me/api/lyric/"
         # lyrics_json = requests.get(lyrics_url + song_name).json()
@@ -473,7 +474,11 @@ class pSub(object):
                 lyric_url = "http://music.163.com/api/song/media?id=" + str(song_id)
                 lyric = requests.get(lyric_url)
                 print("Found songs amount: " + str(song_info['songCount']))
-                print(lyric.json()['lyric'])
+                if 'lyric' in lyric.json():
+                    print(lyric.json()['lyric'])
+                else:
+                    print('No lyrics, will show original json.')
+                    print(lyric.json())
             else:
                 print("No lyrics.")
             lyrics_no = 0
@@ -506,6 +511,10 @@ class pSub(object):
                     os.remove(os.path.join(click.get_app_dir('pSub'), 'play.lock'))
                     ffplay.terminate()
                     return True
+                    
+                # if 'p' in command.lower():
+                #     input("Press Enter to continue...")
+
                 if 'l' in command.lower():
                     lyrics_no += 1
                     if song_info:
