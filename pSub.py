@@ -10,6 +10,7 @@ import urllib
 from random import SystemRandom, shuffle, choices
 from subprocess import CalledProcessError, Popen
 from threading import Thread
+import datetime
 
 import requests
 from click import UsageError
@@ -55,7 +56,8 @@ class pSub(object):
 
         # get the streaming config
         streaming_config = config.get('streaming', {})
-        self.format = streaming_config.get('format', 'raw')
+        self.video_format = streaming_config.get('format', 'raw')
+        self.music_format = streaming_config.get('format', 'raw')
         self.display = streaming_config.get('display', False)
         self.show_mode = streaming_config.get('show_mode', 0)
         self.invert_random = streaming_config.get('invert_random', False)
@@ -217,6 +219,22 @@ class pSub(object):
             return music_folders['subsonic-response']['musicFolders']['musicFolder']
         return []
 
+    def get_indexes(self, folder_id):
+        indexes = self.make_request('{}&musicFolderId={}'.format(self.create_url('getIndexes'), str(folder_id)))
+        if indexes:
+            return indexes['subsonic-response']['indexes']
+        return []
+
+    def get_music_directory(self, dir_id):
+        """
+        Gather list of Music Directories from the Subsonic server
+        :return: list
+        """
+        music_folders = self.make_request('{}&id={}'.format(self.create_url('getMusicDirectory'), str(dir_id)))
+        if music_folders:
+            return music_folders['subsonic-response']['directory']
+        return []
+
     def get_album_tracks(self, album_id):
         """
         return a list of album track ids for the given album id
@@ -230,6 +248,7 @@ class pSub(object):
             songs.append(song)
 
         return songs
+
     def get_videos(self):
         """
         Get a list of all videos
@@ -344,6 +363,36 @@ class pSub(object):
             print("Cannot find video with id " + str(video_id))
         self.play_stream(target_video, is_video=True)
 
+    def play_video_list(self, dir_id):
+        directory = self.get_music_directory(dir_id)
+        self.show_banner("Play videos in <" + directory.get('name') + ">")
+        if 'child' in directory:
+            directory = directory['child']
+            videos = []
+            for i in directory:
+                if (i.get('isDir') == 'false' or i.get('isVideo')):
+                    videos.append(i)
+            if len(videos) == 0:
+                print('No medias.')
+                return
+            playing = True
+            while playing:
+                i = 0
+                while i < len(videos): 
+                    video = videos[i]
+                    if not playing:
+                        return
+                    playing = self.play_stream(dict(video), is_video=True)
+                    if playing == 'previous':
+                        if i != 0:
+                            i -= 1
+                        else:
+                            i = len(songs) - 1
+                        playing = True
+                        continue
+                    i += 1
+        else:
+            print('Nothing here.')
 
     def play_playlist(self, playlist_id, randomise):
         """
@@ -389,9 +438,12 @@ class pSub(object):
         # Load songs id list
         song_possible_names = []
         song_possible_names.append(song_name)
-        song_possible_names = song_possible_names + re.split(r'[-,.()|/]+', song_name)
+        sub_names = re.split(r'[-,.()|/]+', song_name)
+        if len(sub_names) > 1:
+            song_possible_names = song_possible_names + sub_names
         netease_url = "http://music.163.com/api/search/pc"
-        limit = 5
+        limit = 3
+        songs_id_list = []
         for i in song_possible_names:
             possible_name = i.strip()
             if possible_name:
@@ -403,13 +455,10 @@ class pSub(object):
                         song_info = result.json()['result']
                         amount = min(song_info['songCount'], limit)
                         if amount == 0:
-                            return []
-                        songs_id_list = []
+                            continue
                         for j in range(amount):
-                            songs_id_list.append(song_info['songs'][j]['id'])
-                        return songs_id_list
-                        
-        return []
+                            songs_id_list.append(song_info['songs'][j]['id'])            
+        return songs_id_list
 
     def load_lyric_for(self, song_id):
         lyric_url = "http://music.163.com/api/song/media?id=" + str(song_id)
@@ -429,7 +478,7 @@ class pSub(object):
         :param track_data: dict
         :return:
         """
-        stream_url = self.create_url('download')
+        stream_url = self.create_url('stream')
         song_id = track_data.get('id')
 
         if not song_id:
@@ -455,15 +504,19 @@ class pSub(object):
 
         self.scrobble(song_id)
         if is_video:
-            x = "1080"
-            y = "720"
+            x = str(track_data.get('originalWidth'))
+            y = str(track_data.get('originalHeight'))
         else:
             x = "500"
             y = "500"
+        if is_video:
+            media_format = self.video_format
+        else:
+            media_format = self.music_format
         params = [
             'ffplay',
             '-i',
-            '{}&id={}&format={}'.format(stream_url, song_id, self.format),
+            '{}&id={}&format={}'.format(stream_url, song_id, media_format),
             '-showmode',
             '{}'.format(self.show_mode),
             '-window_title',
@@ -477,7 +530,7 @@ class pSub(object):
             '-loglevel',
             'fatal',
         ]
-        if not self.display:
+        if not self.display and not is_video:
             params += ['-nodisp']
 
         try:
@@ -631,7 +684,8 @@ streaming:
     # set this to mp3 or wav etc.
     # depending on the transcoders available to your user on the server
 
-    format: raw
+    video_format: raw
+    music_format: raw
 
     # pSub utilises ffplay (https://ffmpeg.org/ffplay.html) to play the streamed media
     # by default the player window is hidden and control takes place through the cli
@@ -693,6 +747,8 @@ def cli(ctx, config, test):
         os.mkdir(click.get_app_dir('pSub'))
 
     config_file = os.path.join(click.get_app_dir('pSub'), 'config.yaml')
+    # /Users/haifengzhao/Library/Application Support/pSub/config.yaml
+    print(config_file)
 
     if config:
         test = True
@@ -917,19 +973,158 @@ def playlist(psub, randomise):
 
     psub.play_playlist(playlist_id, randomise)
 
+def check_id_exist(lists, check_id):
+    for i in lists:
+        if int(i.get('id')) == int(check_id):
+            return i
+    return False
+
+@cli.command(help='Play a chosen TV series')
+@pass_pSub
+def videoindevelopment(psub):
+    music_folder = None
+    id_valid = False
+    while not id_valid:
+        music_folders = psub.get_music_folders()
+        click.secho(
+            '\n'.join(
+                '{}\t{}'.format(folder['id'], folder['name']) for folder in music_folders
+            ),
+            fg='yellow'
+        )
+        music_folder = click.prompt(
+            'Choose a music folder from the options above',
+            default=0
+        )
+        for folder in music_folders:
+            if int(folder['id']) == int(music_folder):
+                id_valid = True
+                break
+    root_indexes = psub.get_indexes(music_folder)
+    root_directory = root_indexes['index'] if 'index' in root_indexes else None
+    root_videos = root_indexes['child'] if 'child' in root_indexes else None
+    path_pos = 0
+    path_history = []
+    path_history.append(music_folder)
+    user_command = None
+    user_parameter = None
+    while True:
+        if path_pos == 0:
+            all_artists = None
+            if root_directory:
+                all_artists = []
+                for i in root_directory:
+                    click.secho(i.get('name') + "\t\t", fg='white', bg='red')
+                    artists = i['artist']
+                    all_artists = all_artists + artists
+                    click.secho(
+                        '\n'.join(
+                            '{}\t{}'.format(artist['id'], artist['name']) for artist in artists
+                        ),
+                        fg='yellow'
+                    )
+            if root_videos:
+                click.secho(
+                    '\n'.join(
+                        '{}\t{}\t{}'.format(
+                            str(video.get('id')).ljust(6), 
+                            str(video.get('title')).ljust(16),
+                            str(datetime.timedelta(seconds=video.get('duration'))) 
+                        ) for video in root_videos
+                    ),
+                    fg='white',
+                    bg='green'
+                )
+            user_input = click.prompt(
+                'cd for directory, pl for play video or directory'
+            )
+            user_command, user_parameter = user_input.split(' ')
+            if user_command == 'cd':
+                if user_parameter == '..':
+                    path_pos = max(0, path_pos - 1)
+                elif all_artists and check_id_exist(all_artists, user_parameter):
+                    path_pos += 1
+                    if len(path_history) <= path_pos:
+                        path_history.append(user_parameter)
+                    else:
+                        path_history[path_pos] = user_parameter
+            elif user_command == 'pl':
+                if root_videos and check_id_exist(root_videos, user_parameter):
+                    psub.play_video(root_videos, user_parameter)
+                    return
+                elif all_artists and check_id_exist(all_artists, user_parameter):
+                    psub.play_video_list(user_parameter)
+                    return
+            else:
+                print('Wrong command.')
+        else:
+            directories = psub.get_music_directory(path_history[path_pos])
+            if 'child' in directories:
+                directories = directories['child']
+            else:
+                print('No medias here. Getting back...')
+                path_pos -= 1
+                continue
+            for i in directories:
+                if i.get('isDir') == 'true' or i.get('isDir'):
+                    click.secho(
+                        '{}\t{}\t{}'.format(
+                            i.get('id').ljust(6),
+                            i.get('title').ljust(16),
+                            "Dir"
+                        ),
+                        fg='yellow'
+                    )
+                else:
+                    duration = i.get('duration') if 'duration' in i else 0
+                    click.secho(
+                        '{}\t{}\t{}'.format(
+                            i.get('id').ljust(6),
+                            i.get('title').ljust(16),
+                            str(datetime.timedelta(seconds=duration))
+                        ),
+                        fg='white',
+                        bg='green'
+                    )
+            user_input = click.prompt(
+                'cd for directory, pl for play video or directory'
+            )
+            user_command, user_parameter = user_input.split(' ')
+            if user_command == 'cd':
+                if user_parameter == '..':
+                    path_pos = max(0, path_pos - 1)
+                elif (check_id_exist(directories, user_parameter).get('isDir') == 'true' 
+                    or check_id_exist(directories, user_parameter).get('isDir')):
+                    path_pos += 1
+                    if len(path_history) <= path_pos:
+                        path_history.append(user_parameter)
+                    else:
+                        path_history[path_pos] = user_parameter
+                else:
+                    print(check_id_exist(directories, user_parameter))
+            elif user_command == 'pl':
+                if (check_id_exist(directories, user_parameter).get('isDir') == 'true' 
+                    or check_id_exist(directories, user_parameter).get('isDir')):
+                    psub.play_video_list(user_parameter)
+                    return
+                else:
+                    psub.play_video(directories, user_parameter)
+                    return
+            else:
+                print('Wrong command.')
+
 @cli.command(help='Play a chosen video')
 @pass_pSub
 def video(psub):
     video_id = None
-
     while not video_id:
         videos = psub.get_videos()
         click.secho('Videos', bg='red', fg='black')
         click.secho(
             '\n'.join(
-                '{}\t{}\t tracks'.format(
+                '{}\t{}'.format(
                     str(video.get('id')).ljust(7),
-                    str(video.get('title')).ljust(30)
+                    str(video.get('title'))
                 ) for video in videos
             ),
             fg='yellow'
