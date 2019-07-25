@@ -981,7 +981,7 @@ def check_id_exist(lists, check_id):
 
 @cli.command(help='Play a chosen TV series')
 @pass_pSub
-def videoindevelopment(psub):
+def video(psub):
     music_folder = None
     id_valid = False
     while not id_valid:
@@ -1113,28 +1113,28 @@ def videoindevelopment(psub):
             else:
                 print('Wrong command.')
 
-@cli.command(help='Play a chosen video')
-@pass_pSub
-def video(psub):
-    video_id = None
-    while not video_id:
-        videos = psub.get_videos()
-        click.secho('Videos', bg='red', fg='black')
-        click.secho(
-            '\n'.join(
-                '{}\t{}'.format(
-                    str(video.get('id')).ljust(7),
-                    str(video.get('title'))
-                ) for video in videos
-            ),
-            fg='yellow'
-        )
-        video_id = click.prompt(
-            'Enter an id to start',
-            type=int,
-        )
+# @cli.command(help='Play a chosen video')
+# @pass_pSub
+# def video(psub):
+#     video_id = None
+#     while not video_id:
+#         videos = psub.get_videos()
+#         click.secho('Videos', bg='red', fg='black')
+#         click.secho(
+#             '\n'.join(
+#                 '{}\t{}'.format(
+#                     str(video.get('id')).ljust(7),
+#                     str(video.get('title'))
+#                 ) for video in videos
+#             ),
+#             fg='yellow'
+#         )
+#         video_id = click.prompt(
+#             'Enter an id to start',
+#             type=int,
+#         )
 
-    psub.play_video(videos, video_id)
+#     psub.play_video(videos, video_id)
     # psub.show_banner(
     #     'Playing {} tracks from the "{}" playlist'.format(
     #         'randomised' if randomise else '',
