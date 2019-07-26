@@ -59,6 +59,7 @@ Commands:
   playlist  Play a chosen playlist
   radio     Play endless Radio based on a search
   random    Play random tracks
+  video     Play video or videos in a directory
 ```
 #### Details
 Here are some animations of the commands in action:  
@@ -72,11 +73,17 @@ Here are some animations of the commands in action:
 `psub playlist` (playlist must exist on the Subsonic server first)  
 ![](https://github.com/inuitwallet/psub/blob/images/playlist.gif)  
 After entering into play mode, there will be a few more controls:
+
 **n** Play next track.
+
 **b** Restart current track.
+
 **v** Play previous track.
+
 **l** Show next lyric.
+
 **x** Exit
+
 Please note that the lyrics are acquired through [Netease Music](https://music.163.com/) API, which is basically a Chinese cloud music platform. Hence, most information is in Chinese.
 ##### radio
 `psub radio`  
@@ -86,5 +93,7 @@ Please note that the lyrics are acquired through [Netease Music](https://music.1
 ![](https://github.com/inuitwallet/psub/blob/images/random.gif)
 ##### video
 You have to choose an directory entrace at the beginning. After you enter the root directory, it is similar to command in terminal.
+
 **cd <Folder ID>** e.g. cd 4079, cd ..
+          
 **pl <ID>** Play videos or videos in the directory
