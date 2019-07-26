@@ -390,6 +390,11 @@ class pSub(object):
                             i = len(songs) - 1
                         playing = True
                         continue
+                    elif isinstance(playing, str):
+                        if re.match("^\d+$", playing) is not None:
+                            i += int(playing) 
+                            i %= len(videos)
+                            continue
                     i += 1
         else:
             print('Nothing here.')
@@ -562,6 +567,14 @@ class pSub(object):
                 	del self.input_queue.queue[:]
                 else:
                 	self.input_queue.queue.clear()
+
+                if is_video:
+                    # print('Playing videos')
+                    if re.match("^\d$", command.lower()) is not None:
+                        click.secho('Skipping...', fg='blue')
+                        os.remove(os.path.join(click.get_app_dir('pSub'), 'play.lock'))
+                        ffplay.terminate()
+                        return command.lower()
 
                 if 'x' in command.lower():
                     click.secho('Exiting!', fg='blue')
