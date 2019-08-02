@@ -399,7 +399,7 @@ class pSub(object):
         else:
             print('Nothing here.')
 
-    def play_playlist(self, playlist_id, randomise):
+    def play_playlist(self, playlist_id, randomise, start):
         """
         Get the tracks from the supplied playlist id and play them
         :param playlist_id:
@@ -419,8 +419,14 @@ class pSub(object):
 
         playing = True
 
-        while playing:
+        i = 0
+        for song in songs:
+            if start in song['title']:
+                break
+            i += 1
+        if i >= len(songs) or start == 'null':
             i = 0
+        while playing:
             while i < len(songs): 
                 song = songs[i]
                 if not playing:
@@ -434,6 +440,7 @@ class pSub(object):
                     playing = True
                     continue
                 i += 1
+            i = 0
 
     def randomString(self, stringLength=10):
         """Generate a random string of fixed length """
@@ -586,7 +593,7 @@ class pSub(object):
                     click.secho('Restarting Track....', fg='blue')
                     os.remove(os.path.join(click.get_app_dir('pSub'), 'play.lock'))
                     ffplay.terminate()
-                    return self.play_stream(track_data)
+                    return self.play_stream(track_data, is_video=is_video)
 
                 if 'n' in command.lower():
                     click.secho('Skipping...', fg='blue')
@@ -952,10 +959,16 @@ def album(psub, search_term, randomise):
     is_flag=True,
     help='Randomise the order of track playback',
 )
+@click.option(
+    '--start',
+    '-s',
+    default='null',
+    help='Randomise the order of track playback',
+)
 @pass_pSub
-def playlist(psub, randomise):
+def playlist(psub, randomise, start):
     playlist_id = None
-
+    # print('Start at' + start)
     while not playlist_id:
         playlists = psub.get_playlists()
         click.secho('Playlists', bg='red', fg='black')
@@ -984,7 +997,7 @@ def playlist(psub, randomise):
         )
     )
 
-    psub.play_playlist(playlist_id, randomise)
+    psub.play_playlist(playlist_id, randomise, start)
 
 def check_id_exist(lists, check_id):
     for i in lists:
